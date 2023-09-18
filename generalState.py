@@ -4,8 +4,10 @@ import generateConstrains
 
 def generateState():
     theta_t = [30]
-    theta_r1 = np.linspace(10, 30, 3)
-    theta_r2 = np.linspace(40, 60, 3)
+    # theta_r1 = np.linspace(10, 30, 3)
+    # theta_r2 = np.linspace(40, 60, 3)
+    theta_r1 = [10]
+    theta_r2 = [40]
     # theta_r1 = np.linspace(10, 12, 5)
     # theta_r2 = np.linspace(40, 42, 5)
     x_train = np.zeros([len(theta_t) * len(theta_r1) * len(theta_r2), 3])
@@ -19,6 +21,7 @@ def generateState():
 states = generateState()
 
 def generateChannel(state, dist_ris,D,Nt,Nr,Nris,K,f):
+
     lt = dist_ris / np.tan(state[0] / 180 * np.pi)
     lr1 = (D - dist_ris) / np.cos(state[1] / 180 * np.pi)
     lr2 = (D - dist_ris) / np.cos(state[2] / 180 * np.pi)

@@ -2,48 +2,30 @@ import numpy as np
 import torch
 
 
-def generate_constrainsChannleAll(dd, D2, Nt, Nr, Nris, lt, D, K, f, dist_ris):
+def generate_constrainsChannleAll(dd, D2, Nt, Nr, Nris, lt, D, K, f, dist_ris,ob_down,ob_up):
+    [phi01, theta01] = np.meshgrid(0, np.arange(ob_down, ob_up + dd, dd))
+    z_matrix1 = D2 * np.cos(theta01 / 180 * np.pi)  # convert to 3D Cartesian coordinate system (position matrix of Rx antenna)
+    x_matrix1 = D2 * np.sin(theta01 / 180 * np.pi) * np.cos(phi01 / 180 * np.pi)
+    y_matrix1 = D2 * np.sin(theta01 / 180 * np.pi) * np.sin(phi01 / 180 * np.pi)
 
-        [phi01, theta01] = np.meshgrid(0, np.arange(-89, 89 + dd, dd))
+    rx_arr = np.zeros([3, Nr])
+    G_list = np.zeros([len(theta01), Nr, Nris], dtype=np.complex128)
+    for iii in range(len(theta01)):
+        rx_arr[0, :] = x_matrix1[iii]
+        rx_arr[1, :] = y_matrix1[iii]
+        rx_arr[2, :] = z_matrix1[iii]
+        [Hdir3, U, G3] = chan_mat_RIS_new_model_test(Nt, Nr, Nris, lt, z_matrix1[iii], D, 1, K, f, dist_ris, rx_arr)
+        G_list[iii, :, :] = G3
 
+    return G_list
 
-        z_matrix1 = D2 * np.cos(
-            theta01 / 180 * np.pi)  # convert to 3D Cartesian coordinate system (position matrix of Rx antenna)
-        x_matrix1 = D2 * np.sin(theta01 / 180 * np.pi) * np.cos(phi01 / 180 * np.pi)
-        y_matrix1 = D2 * np.sin(theta01 / 180 * np.pi) * np.sin(phi01 / 180 * np.pi)
+def generate_constrains_mid(F1, F2, dd, D2, Nt, Nr, Nris, lt, D, K, f, dist_ris, ob_down, ob_up,U):
 
-        rx_arr = np.zeros([3, Nr])
-        G_list = np.zeros([len(theta01), Nr, Nris], dtype=np.complex128)
-        for iii in range(len(theta01)):
-            rx_arr[0, :] = x_matrix1[iii]
-            rx_arr[1, :] = y_matrix1[iii]
-            rx_arr[2, :] = z_matrix1[iii]
-            [Hdir3, U, G3] = chan_mat_RIS_new_model_test(Nt, Nr, Nris, lt, z_matrix1[iii], D, 1, K, f, dist_ris, rx_arr)
-            G_list[iii, :, :] = G3
-
-        return G_list, np.squeeze(theta01),U
-
-
-
-
-def generate_constrains(theta_r1, theta_r2, F1, F2, U, G_list_All,theta_all,Pt):
-
-    theta_r1 = theta_r1.numpy()
-    theta_r2 = theta_r2.numpy()
     F1 = F1.detach().numpy()
     F2 = F2.detach().numpy()
 
-    F1 = F1 / np.linalg.norm(F1, 'fro') * np.sqrt((Pt))
-    F2 = F2 / np.linalg.norm(F2, 'fro') * np.sqrt((Pt))
+    G_list= generate_constrainsChannleAll(dd, D2, Nt, Nr, Nris, lt, D, K, f, dist_ris, ob_down, ob_up)
 
-
-    if  theta_r2 - theta_r1 >= 20:
-        index111 = np.where(((theta_all >= -89) & (theta_all <= theta_r1 - 10)) | ((theta_all >= theta_r2 + 10) & (theta_all <= 89)) | ((theta_all >=theta_r1 + 10) & (theta_all <= theta_r2 - 10)))
-    else:
-        index111 = np.where(((theta_all >= -89) & (theta_all <= theta_r1 - 10)) | ((theta_all >= theta_r2 + 10) & (theta_all <= 89)))
-
-
-    G_list = G_list_All[np.squeeze(index111),:,:]
 
     # G_list = torch.from_numpy(G_list)
 
@@ -61,9 +43,87 @@ def generate_constrains(theta_r1, theta_r2, F1, F2, U, G_list_All,theta_all,Pt):
     C_list = (C_list_mid @ (np.conj(C_list_mid)).T).T
 
     T_list =  (A_list * B_list + A_list * C_list)
+
+    return T_list
+
+
+def generate_constrains(theta_r1, theta_r2, F1, F2, dd, D2, Nt, Nr, Nris, lt, D, K, f, dist_ris,U):
+    U = U.numpy()
+    T_list1 = generate_constrains_mid(F1, F2, dd, D2, Nt, Nr, Nris, lt, D, K, f, dist_ris, -89, theta_r1-10,U)
+    T_list3 = generate_constrains_mid(F1, F2, dd, D2, Nt, Nr, Nris, lt, D, K, f, dist_ris, theta_r1+10, 89,U)
+    if  theta_r2 - theta_r1 >= 20:
+            T_list2 = generate_constrains_mid(F1, F2, dd, D2, Nt, Nr, Nris, lt, D, K, f, dist_ris, theta_r1+10, theta_r2-10,U)
+            T_list = np.concatenate([T_list1, T_list2, T_list3], 0)
+    else:
+        T_list = np.concatenate([T_list1, T_list3], 0)
+
     T_list = torch.from_numpy(T_list).cfloat()
 
     return T_list
+
+
+# def generate_constrainsChannleAll(dd, D2, Nt, Nr, Nris, lt, D, K, f, dist_ris):
+#
+#         [phi01, theta01] = np.meshgrid(0, np.arange(-89, 89 + dd, dd))
+#
+#
+#         z_matrix1 = D2 * np.cos(
+#             theta01 / 180 * np.pi)  # convert to 3D Cartesian coordinate system (position matrix of Rx antenna)
+#         x_matrix1 = D2 * np.sin(theta01 / 180 * np.pi) * np.cos(phi01 / 180 * np.pi)
+#         y_matrix1 = D2 * np.sin(theta01 / 180 * np.pi) * np.sin(phi01 / 180 * np.pi)
+#
+#         rx_arr = np.zeros([3, Nr])
+#         G_list = np.zeros([len(theta01), Nr, Nris], dtype=np.complex128)
+#         for iii in range(len(theta01)):
+#             rx_arr[0, :] = x_matrix1[iii]
+#             rx_arr[1, :] = y_matrix1[iii]
+#             rx_arr[2, :] = z_matrix1[iii]
+#             [Hdir3, U, G3] = chan_mat_RIS_new_model_test(Nt, Nr, Nris, lt, z_matrix1[iii], D, 1, K, f, dist_ris, rx_arr)
+#             G_list[iii, :, :] = G3
+#
+#         return G_list, np.squeeze(theta01),U
+#
+#
+#
+#
+# def generate_constrains(theta_r1, theta_r2, F1, F2, U, G_list_All,theta_all,Pt):
+#
+#     theta_r1 = theta_r1.numpy()
+#     theta_r2 = theta_r2.numpy()
+#     F1 = F1.detach().numpy()
+#     F2 = F2.detach().numpy()
+#
+#     # F1 = F1 / np.linalg.norm(F1, 'fro') * np.sqrt((Pt))
+#     # F2 = F2 / np.linalg.norm(F2, 'fro') * np.sqrt((Pt))
+#
+#
+#     if  theta_r2 - theta_r1 >= 20:
+#         index111 = np.where(((theta_all >= -89) & (theta_all <= theta_r1 - 10)) | ((theta_all >= theta_r2 + 10) & (theta_all <= 89)) | ((theta_all >=theta_r1 + 10) & (theta_all <= theta_r2 - 10)))
+#     else:
+#         index111 = np.where(((theta_all >= -89) & (theta_all <= theta_r1 - 10)) | ((theta_all >= theta_r2 + 10) & (theta_all <= 89)))
+#
+#
+#     G_list = G_list_All[np.squeeze(index111),:,:]
+#
+#     # G_list = torch.from_numpy(G_list)
+#
+#
+#     A_list = np.conj(G_list).transpose(0,2,1) @ G_list
+#
+#     B_list_mid = U @ F1
+#
+#
+#
+#     B_list =(B_list_mid @ (np.conj(B_list_mid)).T).T
+#
+#
+#     C_list_mid = U @ F2
+#     C_list = (C_list_mid @ (np.conj(C_list_mid)).T).T
+#
+#     T_list =  (A_list * B_list + A_list * C_list)
+#     T_list = torch.from_numpy(T_list).cfloat()
+#
+#     return T_list
 
 
 
